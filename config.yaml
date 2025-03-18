@@ -1,0 +1,5 @@
+output_dir: "output/movement"
+model_path: "yolo11n.pt"
+movement_threshold: 400
+log_format: "%(asctime)s - %(levelname)s - %(message)s"
+
