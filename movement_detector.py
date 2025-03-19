@@ -73,18 +73,13 @@ class MovementDetector:
 
     def calculate_movement(self, boxes, track_ids, track_history):
         max_distance = 0
-        movement_cache = {}
         try:
             for box, track_id in zip(boxes, track_ids):
                 x, y, w, h = box
                 if w * h > 300:
                     track = track_history[track_id]
                     track.append((float(x), float(y)))
-                    if track_id in movement_cache:
-                        dist = movement_cache[track_id]
-                    else:
-                        dist = np.linalg.norm(np.array(track[0]) - np.array(track[-1]))
-                        movement_cache[track_id] = dist
+                    dist = np.linalg.norm(np.array(track[0]) - np.array(track[-1]))
                     max_distance = max(max_distance, dist)
         except Exception as e:
             logging.error(f"Error calculating movement: {e}")
