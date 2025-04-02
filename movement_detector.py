@@ -14,8 +14,9 @@ class MovementDetector:
     def __init__(self, input_video, config_path="config.yaml"):
         self.load_config(config_path)
         self.input_video = input_video
+        self.is_night = False
         try:
-            self.model = YOLO(self.config['model_path'])
+            self.model = YOLO(self.config['day_model_path'])
         except Exception as e:
             logging.error(f"Failed to load YOLO model: {e}")
             raise
@@ -40,6 +41,17 @@ class MovementDetector:
         except Exception as e:
             logging.error(f"Error retrieving capture date for {file_path}: {e}")
             return "unknown_date", "unknown_time"
+    
+    def set_daytime(self, frame):
+        hsv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        saturation_channel = hsv_image[:, :, 1]
+        mean_saturation = saturation_channel.mean()
+        if mean_saturation < 5:
+            self.is_night = True
+            self.model = YOLO(self.config['night_model_path'])
+            logging.info("Using night model")
+        else:
+            logging.info("Using day model")
 
     def save_video(self):
         try:
@@ -96,11 +108,17 @@ class MovementDetector:
 
             track_history = defaultdict(lambda: [])
             movement_detected = False
+            frame_num = 0
 
             while cap.isOpened():
                 success, frame = cap.read()
                 if not success:
                     break
+                
+                frame_num +=1
+
+                if frame_num < 2:
+                    self.set_daytime(frame)
 
                 boxes, track_ids = self.track_objects(frame, track_history)
                 max_distance = self.calculate_movement(boxes, track_ids, track_history)
@@ -113,7 +131,8 @@ class MovementDetector:
                 logging.info(f'Movement detected')
                 self.save_video()
                 self.save_image(frame)
-                os.remove(self.input_video)
+            
+            os.remove(self.input_video)
         except Exception as e:
             logging.error(f"Error processing video {self.input_video}: {e}")
         finally:
