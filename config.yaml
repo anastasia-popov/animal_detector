@@ -3,4 +3,5 @@ day_model_path: "yolo11s.pt"
 night_model_path: "yolo11s.pt"
 movement_threshold: 400
 log_format: "%(asctime)s - %(levelname)s - %(message)s"
+frame_rate: 1
 

@@ -137,6 +137,9 @@ class MovementDetector:
 
                 if frame_num < 2:
                     self.set_daytime(frame)
+                    
+                if frame_num % int(self.config['frame_rate']):
+                    continue
 
                 boxes, track_ids, annotated_frame  = self.track_objects(frame, track_history)
                 max_distance, max_track, tracked_object, object_box = self.calculate_movement(boxes, track_ids, track_history)
