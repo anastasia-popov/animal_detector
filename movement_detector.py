@@ -14,6 +14,7 @@ class MovementDetector:
     def __init__(self, input_video, config_path="config.yaml"):
         self.load_config(config_path)
         self.input_video = input_video
+        self.id_class_dict = {}
         self.is_night = False
         try:
             self.model = YOLO(self.config['day_model_path'])
@@ -75,16 +76,27 @@ class MovementDetector:
 
     def track_objects(self, frame, track_history):
         try:
+            boxes, track_ids = [], []
+            annotated_frame = frame
             results = self.model.track(frame, persist=True, conf=0.01, verbose=False)
-            boxes = results[0].boxes.xywh.cpu()
-            track_ids = results[0].boxes.id.int().cpu().tolist()
-            return boxes, track_ids
+            if not(results[0].boxes.id is None):
+               boxes = results[0].boxes.xywh.cpu()
+               track_ids = results[0].boxes.id.int().cpu().tolist()
+               annotated_frame = results[0].plot()
+               cls = results[0].boxes.cls.int().cpu().tolist()
+               for track_id, box_class in zip(track_ids, cls):
+                   if not(track_id in self.id_class_dict):
+                       self.id_class_dict[track_id] = box_class
+            return boxes, track_ids, annotated_frame
         except Exception as e:
             logging.error(f"Error tracking objects: {e}")
-            return [], []
+            return [], [], annotated_frame
 
     def calculate_movement(self, boxes, track_ids, track_history):
         max_distance = 0
+        max_track = []
+        max_track_object = ""
+        object_box = [0,0,0,0]
         try:
             for box, track_id in zip(boxes, track_ids):
                 x, y, w, h = box
@@ -92,10 +104,14 @@ class MovementDetector:
                     track = track_history[track_id]
                     track.append((float(x), float(y)))
                     dist = np.linalg.norm(np.array(track[0]) - np.array(track[-1]))
-                    max_distance = max(max_distance, dist)
+                    if dist > max_distance:
+                        max_distance = dist
+                        max_track = track_history[track_id]
+                        max_track_object =  self.model.names[self.id_class_dict[track_id]]
+                        object_box = box
         except Exception as e:
             logging.error(f"Error calculating movement: {e}")
-        return max_distance
+        return max_distance, max_track, max_track_object, object_box
 
     def process_video(self):
         try:
@@ -108,6 +124,8 @@ class MovementDetector:
 
             track_history = defaultdict(lambda: [])
             movement_detected = False
+            tracked_object = ""
+            object_box = [0,0,0,0]
             frame_num = 0
 
             while cap.isOpened():
@@ -120,17 +138,19 @@ class MovementDetector:
                 if frame_num < 2:
                     self.set_daytime(frame)
 
-                boxes, track_ids = self.track_objects(frame, track_history)
-                max_distance = self.calculate_movement(boxes, track_ids, track_history)
+                boxes, track_ids, annotated_frame  = self.track_objects(frame, track_history)
+                max_distance, max_track, tracked_object, object_box = self.calculate_movement(boxes, track_ids, track_history)
 
                 if max_distance > self.config['movement_threshold']:
                     movement_detected = True
                     break
 
             if movement_detected:
-                logging.info(f'Movement detected')
+                logging.info(f'Movement detected: {tracked_object}')
                 self.save_video()
-                self.save_image(frame)
+                points = np.hstack(max_track).astype(np.int32).reshape((-1, 1, 2))
+                cv2.polylines(annotated_frame, [points], isClosed=False, color=(0, 0, 255), thickness=10)
+                self.save_image(annotated_frame)
             
             os.remove(self.input_video)
         except Exception as e:
